@@ -23,14 +23,11 @@ import tensorflow.keras.layers as KL
 from tensorflow.keras.layers import Layer
 import tensorflow.keras.models as KM
 
-
-
 from mrcnn import utils
 
 # Requires TensorFlow 2.0+
 from distutils.version import LooseVersion
 assert LooseVersion(tf.__version__) >= LooseVersion("2.0")
-
 
 ############################################################
 #  Utility Functions
@@ -274,6 +271,13 @@ class ProposalLayer(Layer):
         self.proposal_count = proposal_count
         self.nms_threshold = nms_threshold
 
+    def get_config(self):
+        config = super(ProposalLayer, self).get_config()
+        config["config"] = self.config.to_dict()
+        config["proposal_count"] = self.proposal_count
+        config["nms_threshold"] = self.nms_threshold
+        return config
+
     def call(self, inputs):
         # Box Scores. Use the foreground class confidence. [Batch, num_rois, 1]
         scores = inputs[0][:, :, 1]
@@ -330,7 +334,7 @@ class ProposalLayer(Layer):
         return proposals
 
     def compute_output_shape(self, input_shape):
-        return (None, self.proposal_count, 4)
+        return None, self.proposal_count, 4
 
 
 ############################################################
@@ -365,6 +369,11 @@ class PyramidROIAlign(Layer):
     def __init__(self, pool_shape, **kwargs):
         super(PyramidROIAlign, self).__init__(**kwargs)
         self.pool_shape = tuple(pool_shape)
+
+    def get_config(self):
+        config = super(PyramidROIAlign, self).get_config()
+        config['pool_shape'] = self.pool_shape
+        return config
 
     def call(self, inputs):
         # Crop boxes [batch, num_boxes, (y1, x1, y2, x2)] in normalized coords
@@ -649,6 +658,11 @@ class DetectionTargetLayer(Layer):
         super(DetectionTargetLayer, self).__init__(**kwargs)
         self.config = config
 
+    def get_config(self):
+        config = super(DetectionTargetLayer, self).get_config()
+        config["config"] = self.config.to_dict()
+        return config
+
     def call(self, inputs):
         proposals = inputs[0]
         gt_class_ids = inputs[1]
@@ -790,8 +804,14 @@ class DetectionLayer(Layer):
     """
 
     def __init__(self, config=None, **kwargs):
+
         super(DetectionLayer, self).__init__(**kwargs)
         self.config = config
+
+    def get_config(self):
+        config = super(DetectionLayer, self).get_config()
+        config["config"] = self.config.to_dict()
+        return config
 
     def call(self, inputs):
         rois = inputs[0]
@@ -821,7 +841,7 @@ class DetectionLayer(Layer):
             [self.config.BATCH_SIZE, self.config.DETECTION_MAX_INSTANCES, 6])
 
     def compute_output_shape(self, input_shape):
-        return (None, self.config.DETECTION_MAX_INSTANCES, 6)
+        return None, self.config.DETECTION_MAX_INSTANCES, 6
 
 
 ############################################################
@@ -1821,7 +1841,7 @@ def data_generator(dataset, config, shuffle=True, augment=False, augmentation=No
 #  MaskRCNN Class
 ############################################################
 
-class MaskRCNN():
+class MaskRCNN(object):
     """Encapsulates the Mask RCNN model functionality.
 
     The actual Keras model is in the keras_model property.
@@ -2192,7 +2212,7 @@ class MaskRCNN():
             loss = (
                 tf.reduce_mean(input_tensor=layer.output, keepdims=True)
                 * self.config.LOSS_WEIGHTS.get(name, 1.))
-            self.keras_model.metrics_tensors.append(loss)
+            self.keras_model.metrics.append(loss, name)
 
     def set_trainable(self, layer_regex, keras_model=None, indent=0, verbose=1):
         """Sets model layers as trainable if their names match
@@ -2352,7 +2372,7 @@ class MaskRCNN():
         # Work-around for Windows: Keras fails on Windows when using
         # multiprocessing workers. See discussion here:
         # https://github.com/matterport/Mask_RCNN/issues/13#issuecomment-353124009
-        if os.name is 'nt':
+        if os.name == 'nt':
             workers = 0
         else:
             workers = multiprocessing.cpu_count()
